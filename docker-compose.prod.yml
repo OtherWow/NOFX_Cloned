@@ -1,0 +1,52 @@
+services:
+  # Backend service (从GitHub镜像仓库拉取)
+  nofx:
+    image: ghcr.io/otherwow/nofx_cloned/backend:latest
+    container_name: nofx-trading
+    restart: unless-stopped
+    stop_grace_period: 30s
+    ports:
+      - "${NOFX_BACKEND_PORT:-8080}:8080"
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - ./config.db:/app/config.db
+      - ./beta_codes.txt:/app/beta_codes.txt:ro
+      - ./decision_logs:/app/decision_logs
+      - ./prompts:/app/prompts
+      - ./secrets:/app/secrets:ro
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      - TZ=${NOFX_TIMEZONE:-Asia/Shanghai}
+      - AI_MAX_TOKENS=4000
+      - DATA_ENCRYPTION_KEY=${DATA_ENCRYPTION_KEY}
+      - JWT_SECRET=${JWT_SECRET}
+    networks:
+      - nofx-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # Frontend service (从GitHub镜像仓库拉取)
+  nofx-frontend:
+    image: ghcr.io/otherwow/nofx_cloned/frontend:latest
+    container_name: nofx-frontend
+    restart: unless-stopped
+    ports:
+      - "${NOFX_FRONTEND_PORT:-3000}:80"
+    networks:
+      - nofx-network
+    depends_on:
+      - nofx
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+networks:
+  nofx-network:
+    driver: bridge

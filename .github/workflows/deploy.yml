@@ -1,20 +1,76 @@
-name: 🚀 Auto Deploy to Server
+name: 🚀 Build & Deploy to Server
 
 on:
   push:
     branches:
       - main
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
 jobs:
-  deploy:
-    name: 部署到生产服务器
+  build-and-push:
+    name: 构建并推送Docker镜像
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     
     steps:
       - name: 📥 检出代码
         uses: actions/checkout@v3
       
-      - name: 🔐 配置SSH
+      - name: 🔐 登录GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: 📝 提取Docker元数据
+        id: meta-backend
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix={{branch}}-
+      
+      - name: 📝 提取前端Docker元数据
+        id: meta-frontend
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix={{branch}}-
+      
+      - name: 🔨 构建并推送后端镜像
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./docker/Dockerfile.backend
+          push: true
+          tags: ${{ steps.meta-backend.outputs.tags }}
+          labels: ${{ steps.meta-backend.outputs.labels }}
+      
+      - name: � 构建并推送前端镜像
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./docker/Dockerfile.frontend
+          push: true
+          tags: ${{ steps.meta-frontend.outputs.tags }}
+          labels: ${{ steps.meta-frontend.outputs.labels }}
+
+  deploy:
+    name: 部署到生产服务器
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: � 配置SSH
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/deploy_key
@@ -24,32 +80,22 @@ jobs:
       - name: 🚀 部署到服务器
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'ENDSSH'
-            # 进入项目目录
+            # 进入部署目录
             cd ${{ secrets.PROJECT_PATH }}
             
-            # 输出当前状态
-            echo "📂 当前目录: $(pwd)"
-            echo "🔍 当前分支: $(git branch --show-current)"
+            echo "📥 拉取最新镜像..."
+            docker pull ghcr.io/otherwow/nofx_cloned/backend:latest
+            docker pull ghcr.io/otherwow/nofx_cloned/frontend:latest
             
-            # 拉取最新代码
-            echo "📥 拉取最新代码..."
-            git fetch origin
-            git reset --hard origin/main
+            echo "🛑 停止旧容器..."
+            docker-compose -f docker-compose.prod.yml down || true
             
-            # 显示最新提交
-            echo "✅ 最新提交:"
-            git log -1 --oneline
+            echo "🚀 启动新容器..."
+            docker-compose -f docker-compose.prod.yml up -d
             
-            # 重启Docker服务
-            echo "🐳 重启Docker容器..."
-            ./start.sh stop
-            ./start.sh start --build
-            
-            # 等待服务启动
             echo "⏳ 等待服务启动..."
             sleep 10
             
-            # 检查服务状态
             echo "🔍 检查服务状态..."
             docker ps
             
@@ -60,8 +106,8 @@ jobs:
         if: success()
         run: |
           echo "🎉 部署成功！"
-          echo "服务器: ${{ secrets.SERVER_HOST }}"
-          echo "项目: ${{ secrets.PROJECT_PATH }}"
+          echo "后端镜像: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend:latest"
+          echo "前端镜像: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend:latest"
       
       - name: ❌ 部署失败通知
         if: failure()
