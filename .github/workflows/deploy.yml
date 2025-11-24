@@ -88,10 +88,10 @@ jobs:
             docker pull ghcr.io/otherwow/nofx_cloned/frontend:latest
             
             echo "🛑 停止旧容器..."
-            docker-compose -f docker-compose.prod.yml down || true
+            docker compose -f docker-compose.prod.yml down || true
             
             echo "🚀 启动新容器..."
-            docker-compose -f docker-compose.prod.yml up -d
+            docker compose -f docker-compose.prod.yml up -d
             
             echo "⏳ 等待服务启动..."
             sleep 10
