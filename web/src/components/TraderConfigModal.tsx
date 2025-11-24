@@ -116,7 +116,7 @@ export function TraderConfigModal({
     const fetchConfig = async () => {
       try {
         const response = await httpClient.get('/api/config')
-        const config = await response.json()
+        const config = response.data
         if (config.default_coins) {
           setAvailableCoins(config.default_coins)
         }
@@ -142,7 +142,7 @@ export function TraderConfigModal({
     const fetchPromptTemplates = async () => {
       try {
         const response = await httpClient.get('/api/prompt-templates')
-        const data = await response.json()
+        const data = response.data
         if (data.templates) {
           setPromptTemplates(data.templates)
         }
@@ -206,7 +206,7 @@ export function TraderConfigModal({
         }
       )
 
-      const data = await response.json()
+      const data = response.data
 
       // total_equity = 当前账户净值（包含未实现盈亏）
       // 这应该作为新的初始余额
